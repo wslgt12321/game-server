@@ -3,9 +3,8 @@ const PORT = process.env.PORT || 3000;
 const wss = new WebSocket.Server({ port: PORT });
 
 let players = {};
-let monsters = {};
-let skills = []; // 技能对象
-let texts = [];  // 飘字
+let skills = [];
+let texts = [];
 
 wss.on("connection",(ws)=>{
   let id = "p"+Date.now();
@@ -14,6 +13,7 @@ wss.on("connection",(ws)=>{
     x:100,
     y:100,
     hp:100,
+    gold:0,
     name:"玩家"+id.slice(-3)
   };
 
@@ -25,7 +25,6 @@ wss.on("connection",(ws)=>{
       players[id].y = data.y;
     }
 
-    // 🔥 释放技能（火球）
     if(data.type==="skill"){
       skills.push({
         x: players[id].x,
@@ -40,7 +39,7 @@ wss.on("connection",(ws)=>{
   ws.on("close",()=> delete players[id]);
 });
 
-// 🔥 技能移动 + 碰撞
+// 技能移动+碰撞
 setInterval(()=>{
   for(let i=skills.length-1;i>=0;i--){
     let s = skills[i];
@@ -48,12 +47,12 @@ setInterval(()=>{
     s.x += s.dx * 5;
     s.y += s.dy * 5;
 
-    // 命中玩家
     for(let pid in players){
       if(pid!==s.owner){
         let p = players[pid];
         let dx = p.x - s.x;
         let dy = p.y - s.y;
+
         if(Math.sqrt(dx*dx+dy*dy)<20){
           p.hp -= 20;
 
@@ -70,14 +69,13 @@ setInterval(()=>{
       }
     }
 
-    // 超出范围删除
     if(s.x<0||s.x>500||s.y<0||s.y>400){
       skills.splice(i,1);
     }
   }
 },50);
 
-// 飘字更新
+// 飘字
 setInterval(()=>{
   for(let t of texts){
     t.y -= 1;
@@ -86,12 +84,17 @@ setInterval(()=>{
   texts = texts.filter(t=>t.life>0);
 },50);
 
+// 自动加金币（测试）
+setInterval(()=>{
+  for(let id in players){
+    players[id].gold += 1;
+  }
+},1000);
+
 // 广播
 setInterval(()=>{
   let data = JSON.stringify({players,skills,texts});
   wss.clients.forEach(c=>c.send(data));
 },50);
-
-console.log("server running");
 
 console.log("server running");
