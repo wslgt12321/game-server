@@ -4,17 +4,8 @@ const wss = new WebSocket.Server({ port: PORT });
 
 let players = {};
 let monsters = {};
-let coins = [];
-
-function spawnMonster(){
-  let id = "m"+Date.now();
-  monsters[id] = {
-    x: Math.random()*500,
-    y: Math.random()*400,
-    hp: 50
-  };
-}
-setInterval(spawnMonster,3000);
+let skills = []; // 技能对象
+let texts = [];  // 飘字
 
 wss.on("connection",(ws)=>{
   let id = "p"+Date.now();
@@ -23,7 +14,6 @@ wss.on("connection",(ws)=>{
     x:100,
     y:100,
     hp:100,
-    gold:0,
     name:"玩家"+id.slice(-3)
   };
 
@@ -35,66 +25,73 @@ wss.on("connection",(ws)=>{
       players[id].y = data.y;
     }
 
-    if(data.type==="attack"){
-      // 打玩家
-      for(let pid in players){
-        if(pid!==id){
-          let dx = players[pid].x - players[id].x;
-          let dy = players[pid].y - players[id].y;
-          if(Math.sqrt(dx*dx+dy*dy)<50){
-            players[pid].hp -= 10;
-          }
-        }
-      }
-
-      // 打怪
-      for(let mid in monsters){
-        let m = monsters[mid];
-        let dx = m.x - players[id].x;
-        let dy = m.y - players[id].y;
-        if(Math.sqrt(dx*dx+dy*dy)<50){
-          m.hp -= 20;
-          if(m.hp<=0){
-            coins.push({x:m.x,y:m.y});
-            delete monsters[mid];
-          }
-        }
-      }
-    }
-
-    // 捡金币
-    for(let i=coins.length-1;i>=0;i--){
-      let c = coins[i];
-      let dx = c.x - players[id].x;
-      let dy = c.y - players[id].y;
-      if(Math.sqrt(dx*dx+dy*dy)<20){
-        players[id].gold += 1;
-        coins.splice(i,1);
-      }
+    // 🔥 释放技能（火球）
+    if(data.type==="skill"){
+      skills.push({
+        x: players[id].x,
+        y: players[id].y,
+        dx: data.dx,
+        dy: data.dy,
+        owner: id
+      });
     }
   });
 
   ws.on("close",()=> delete players[id]);
 });
 
-// 怪物AI攻击玩家
+// 🔥 技能移动 + 碰撞
 setInterval(()=>{
-  for(let mid in monsters){
-    let m = monsters[mid];
+  for(let i=skills.length-1;i>=0;i--){
+    let s = skills[i];
+
+    s.x += s.dx * 5;
+    s.y += s.dy * 5;
+
+    // 命中玩家
     for(let pid in players){
-      let p = players[pid];
-      let dx = p.x - m.x;
-      let dy = p.y - m.y;
-      if(Math.sqrt(dx*dx+dy*dy)<40){
-        p.hp -= 1;
+      if(pid!==s.owner){
+        let p = players[pid];
+        let dx = p.x - s.x;
+        let dy = p.y - s.y;
+        if(Math.sqrt(dx*dx+dy*dy)<20){
+          p.hp -= 20;
+
+          texts.push({
+            x:p.x,
+            y:p.y,
+            value:"-20",
+            life:30
+          });
+
+          skills.splice(i,1);
+          break;
+        }
       }
     }
-  }
-},100);
 
+    // 超出范围删除
+    if(s.x<0||s.x>500||s.y<0||s.y>400){
+      skills.splice(i,1);
+    }
+  }
+},50);
+
+// 飘字更新
 setInterval(()=>{
-  let data = JSON.stringify({players,monsters,coins});
+  for(let t of texts){
+    t.y -= 1;
+    t.life--;
+  }
+  texts = texts.filter(t=>t.life>0);
+},50);
+
+// 广播
+setInterval(()=>{
+  let data = JSON.stringify({players,skills,texts});
   wss.clients.forEach(c=>c.send(data));
 },50);
+
+console.log("server running");
 
 console.log("server running");
